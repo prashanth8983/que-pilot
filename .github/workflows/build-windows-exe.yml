@@ -1,0 +1,258 @@
+name: Build Windows .exe for Snapdragon X
+
+on:
+  workflow_dispatch:  # Manual trigger
+  push:
+    branches: [ main ]
+    paths:
+      - 'presentation/**'
+      - 'builds/snapdragon_x_windows/**'
+      - '.github/workflows/build-windows-exe.yml'
+
+jobs:
+  build-windows-exe:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'  # Use 3.11 for better Windows compatibility
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyinstaller>=5.13.0
+        pip install python-pptx>=0.6.21
+        pip install opencv-python>=4.8.0
+        pip install pytesseract>=0.3.10
+        pip install Pillow>=10.0.0
+        pip install numpy>=1.24.0
+        pip install psutil>=5.9.0
+        pip install pywin32>=306
+        
+    - name: Create Windows .exe spec file
+      run: |
+        $specContent = @"
+        # -*- mode: python ; coding: utf-8 -*-
+
+        import os
+        import sys
+        from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+
+        # Add the presentation package to the path
+        presentation_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(SPEC))), 'presentation')
+        sys.path.insert(0, presentation_path)
+
+        # Collect all data files and submodules for dependencies
+        datas = []
+        hiddenimports = []
+
+        # Add presentation_detector data files
+        try:
+            datas += collect_data_files('presentation_detector')
+            hiddenimports += collect_submodules('presentation_detector')
+        except:
+            pass
+
+        # Add pptx data files
+        try:
+            datas += collect_data_files('pptx')
+            hiddenimports += collect_submodules('pptx')
+        except:
+            pass
+
+        # Add opencv data files
+        try:
+            datas += collect_data_files('cv2')
+            hiddenimports += collect_submodules('cv2')
+        except:
+            pass
+
+        # Add PIL/Pillow data files
+        try:
+            datas += collect_data_files('PIL')
+            hiddenimports += collect_submodules('PIL')
+        except:
+            pass
+
+        # Add numpy data files
+        try:
+            datas += collect_data_files('numpy')
+            hiddenimports += collect_submodules('numpy')
+        except:
+            pass
+
+        # Add pytesseract data files
+        try:
+            datas += collect_data_files('pytesseract')
+            hiddenimports += collect_submodules('pytesseract')
+        except:
+            pass
+
+        # Add psutil data files
+        try:
+            datas += collect_data_files('psutil')
+            hiddenimports += collect_submodules('psutil')
+        except:
+            pass
+
+        # Add Windows-specific imports
+        try:
+            hiddenimports += ['win32gui', 'win32process', 'win32api', 'win32con', 'win32ctypes']
+        except:
+            pass
+
+        # Main analysis configuration
+        a = Analysis(
+            [os.path.join(presentation_path, 'main_app.py')],
+            pathex=[presentation_path],
+            binaries=[],
+            datas=datas,
+            hiddenimports=hiddenimports,
+            hookspath=[],
+            hooksconfig={},
+            runtime_hooks=[],
+            excludes=[
+                'matplotlib', 'scipy', 'pandas', 'jupyter', 'notebook',
+                'IPython', 'tkinter.test', 'test', 'unittest', 'doctest',
+                'Cocoa', 'Quartz', 'Foundation', 'AppKit',  # macOS specific
+                'pyobjc', 'pyobjc_core', 'pyobjc_framework'  # macOS specific
+            ],
+            win_no_prefer_redirects=False,
+            win_private_assemblies=False,
+            cipher=None,
+            noarchive=False,
+        )
+
+        # Remove duplicate entries
+        a.datas = list(set(a.datas))
+        a.binaries = list(set(a.binaries))
+
+        # PYZ configuration
+        pyz = PYZ(a.pure, a.zipped_data, cipher=None)
+
+        # EXE configuration for Windows ARM64 (.exe file)
+        exe = EXE(
+            pyz,
+            a.scripts,
+            a.binaries,
+            a.zipfiles,
+            a.datas,
+            [],
+            name='PowerPointTracker_SnapdragonX',
+            debug=False,
+            bootloader_ignore_signals=False,
+            strip=False,
+            upx=True,
+            upx_exclude=[],
+            runtime_tmpdir=None,
+            console=False,  # GUI application
+            disable_windowed_traceback=False,
+            argv_emulation=False,
+            target_arch='arm64',  # Snapdragon X ARM64 architecture
+            codesign_identity=None,
+            entitlements_file=None,
+            icon=None,
+            version=None,
+        )
+        "@
+        
+        $specContent | Out-File -FilePath "powerpoint_tracker_windows_exe.spec" -Encoding UTF8
+        
+    - name: Build Windows .exe
+      run: |
+        pyinstaller --clean --noconfirm powerpoint_tracker_windows_exe.spec
+        
+    - name: Verify .exe file
+      run: |
+        if (Test-Path "dist\PowerPointTracker_SnapdragonX.exe") {
+          Write-Host "✅ Windows .exe file created successfully!"
+          $fileInfo = Get-Item "dist\PowerPointTracker_SnapdragonX.exe"
+          Write-Host "📁 File: $($fileInfo.FullName)"
+          Write-Host "📊 Size: $([math]::Round($fileInfo.Length / 1MB, 2)) MB"
+          Write-Host "🏗️  Architecture: ARM64 (Snapdragon X)"
+        } else {
+          Write-Host "❌ Windows .exe file not found!"
+          exit 1
+        }
+        
+    - name: Create deployment package
+      run: |
+        New-Item -ItemType Directory -Path "PowerPointTracker_SnapdragonX_Windows_Package" -Force
+        Copy-Item "dist\PowerPointTracker_SnapdragonX.exe" "PowerPointTracker_SnapdragonX_Windows_Package\"
+        
+        $readmeContent = @"
+        PowerPoint Tracker for Snapdragon X Windows ARM64
+        =================================================
+
+        This package contains the PowerPoint Tracker application as a Windows .exe file
+        compiled for Snapdragon X Windows ARM64.
+
+        Files:
+        - PowerPointTracker_SnapdragonX.exe: Main Windows executable
+
+        System Requirements:
+        - Windows 11 on Snapdragon X ARM64 processor
+        - PowerPoint installed on target system
+        - Visual C++ Redistributable for ARM64 (may be required)
+
+        Usage:
+        1. Copy PowerPointTracker_SnapdragonX.exe to your Snapdragon X Windows device
+        2. Double-click the .exe file to run (no installation required)
+        3. Ensure PowerPoint is installed on target system
+        4. Grant necessary permissions for window detection
+
+        Features:
+        - Automatic PowerPoint window detection
+        - Real-time slide tracking
+        - Cross-platform compatibility
+        - Self-contained Windows executable
+
+        For support and updates, please refer to the project documentation.
+        "@
+        
+        $readmeContent | Out-File -FilePath "PowerPointTracker_SnapdragonX_Windows_Package\README.txt" -Encoding UTF8
+        
+    - name: Upload Windows .exe artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: PowerPointTracker_SnapdragonX_Windows_EXE
+        path: |
+          PowerPointTracker_SnapdragonX_Windows_Package/
+          dist/PowerPointTracker_SnapdragonX.exe
+        retention-days: 30
+        
+    - name: Create Release (if on main branch)
+      if: github.ref == 'refs/heads/main'
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: windows-exe-${{ github.run_number }}
+        name: Windows .exe Build ${{ github.run_number }}
+        body: |
+          ## Windows .exe for Snapdragon X ARM64
+          
+          This release contains the PowerPoint Tracker as a Windows .exe file compiled for Snapdragon X ARM64 processors.
+          
+          ### Files Included:
+          - `PowerPointTracker_SnapdragonX.exe` - Main Windows executable
+          - `README.txt` - Deployment instructions
+          
+          ### System Requirements:
+          - Windows 11 on Snapdragon X ARM64 processor
+          - PowerPoint installed on target system
+          - Visual C++ Redistributable for ARM64 (may be required)
+          
+          ### Usage:
+          1. Download the executable
+          2. Copy to your Snapdragon X Windows device
+          3. Double-click to run (no installation required)
+          
+          **Note:** This is an automated build from the main branch.
+        files: |
+          PowerPointTracker_SnapdragonX_Windows_Package/*
+        draft: false
+        prerelease: false
