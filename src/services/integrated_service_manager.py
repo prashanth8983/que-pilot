@@ -364,7 +364,11 @@ class IntegratedServiceManager:
     def get_current_slide_content(self) -> Optional[str]:
         """Get content for the current slide."""
         if not self.current_presentation_content:
-            return None
+            # Try to use fallback content
+            try:
+                return fallback_provider.get_slide_content(self.status.current_slide)
+            except Exception:
+                return None
 
         try:
             return ppt_extractor.get_slide_text(
@@ -373,7 +377,11 @@ class IntegratedServiceManager:
             )
         except Exception as e:
             self.logger.error(f"Failed to get slide content: {e}")
-            return None
+            # Fallback to hardcoded content
+            try:
+                return fallback_provider.get_slide_content(self.status.current_slide)
+            except Exception:
+                return None
 
     def set_callbacks(self,
                      slide_change_callback: Optional[Callable[[int, int], None]] = None,

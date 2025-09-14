@@ -299,14 +299,49 @@ class PresentationService:
                 else:
                     print(f"❌ Failed to load: {selected_file}")
 
-            print("❌ No presentation files found for auto-detection")
-            return False
+            print("⚠️ No presentation files found, trying fallback content...")
+
+            # Method 3: Use hardcoded fallback content as last resort
+            try:
+                from .fallback_content import fallback_provider
+
+                # Load hardcoded presentation
+                fallback_content = fallback_provider.get_fallback_presentation()
+
+                self.current_presentation_id = fallback_content.title
+                # Create minimal tracker for compatibility
+                self.tracker = PresentationTracker(None, auto_detect=True)
+                self.tracker.current_slide_index = 0  # Start at slide 1 (0-based)
+                self.tracker.total_slides = fallback_content.total_slides
+
+                # Notify callbacks
+                for callback in self.presentation_load_callbacks:
+                    callback(self.current_presentation_id, fallback_content.total_slides)
+
+                print(f"✅ Loaded fallback presentation: {fallback_content.title} ({fallback_content.total_slides} slides)")
+                return True
+
+            except Exception as fallback_error:
+                print(f"❌ Fallback content also failed: {fallback_error}")
+                return False
 
         except Exception as e:
             print(f"❌ Failed to auto-detect presentation: {e}")
             import traceback
             traceback.print_exc()
-            return False
+
+            # Try fallback as final attempt
+            try:
+                from .fallback_content import fallback_provider
+                fallback_content = fallback_provider.get_fallback_presentation()
+                self.current_presentation_id = fallback_content.title
+                self.tracker = PresentationTracker(None, auto_detect=True)
+                self.tracker.current_slide_index = 0
+                self.tracker.total_slides = fallback_content.total_slides
+                print(f"✅ Emergency fallback loaded: {fallback_content.title}")
+                return True
+            except Exception:
+                return False
     
     def get_presentation_summary(self) -> Dict:
         """Get a summary of the current presentation."""
