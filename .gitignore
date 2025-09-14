@@ -1,5 +1,6 @@
 # Python
 builds/*
+depreciated/*
 __pycache__/
 *.py[cod]
 *$py.class

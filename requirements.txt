@@ -1,0 +1,46 @@
+# AI Presentation Copilot - Dependencies
+
+# Core GUI Framework
+PySide6>=6.5.0
+qtawesome>=1.4.0
+
+# Presentation Processing
+python-pptx>=0.6.21
+Pillow>=10.0.0
+
+# Computer Vision & OCR
+opencv-python>=4.8.0
+pytesseract>=0.3.10
+
+# AI/ML Components - Live Transcription
+openai-whisper>=20231117
+pyaudio>=0.2.11
+torch>=2.0.0
+torchaudio>=2.0.0
+# sentence-transformers>=2.2.2
+# faiss-cpu>=1.7.4
+# chromadb>=0.4.0
+
+# System Integration
+psutil>=5.9.0
+
+# Platform-specific dependencies
+# Windows
+pywin32>=306; sys_platform == "win32"
+
+# macOS
+pyobjc-framework-Cocoa>=10.0; sys_platform == "darwin"
+pyobjc-framework-Quartz>=10.0; sys_platform == "darwin"
+
+# Development & Testing
+pytest>=7.4.0
+pytest-qt>=4.2.0
+black>=23.0.0
+flake8>=6.0.0
+
+# Utilities
+numpy>=1.24.0
+pathlib2>=2.3.7; python_version < "3.4"
+
+# PPT to PPTX Conversion
+unoconv>=0.7; sys_platform != "win32"
