@@ -1,0 +1,25 @@
+# OCR-based PowerPoint detection dependencies
+# Install with: pip install -r requirements-ocr.txt
+
+# Core OCR and image processing
+pytesseract>=0.3.10
+opencv-python>=4.8.0
+Pillow>=9.0.0
+numpy>=1.20.0
+
+# Screen capture
+pyautogui>=0.9.54
+
+# Platform-specific dependencies (install as needed)
+# For Windows:
+# pywin32>=306
+# psutil>=5.9.0
+
+# For macOS:
+# pyobjc-framework-Quartz>=9.0
+# pyobjc-framework-Cocoa>=9.0
+
+# Note: You also need to install Tesseract OCR on your system:
+# Windows: Download from https://github.com/UB-Mannheim/tesseract/wiki
+# macOS: brew install tesseract
+# Linux: sudo apt-get install tesseract-ocr

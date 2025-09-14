@@ -28,6 +28,91 @@ class PresentationTracker:
         if ppt_path:
             self.load_presentation()
 
+    def _detect_ppt_slide_count(self) -> int:
+        """Try to detect the actual slide count in a PPT file using various methods."""
+        if not self.ppt_path or not os.path.exists(self.ppt_path):
+            return 0
+
+        try:
+            # Method 1: Try using olefile to read the PowerPoint binary structure
+            try:
+                import olefile
+                if olefile.isOleFile(self.ppt_path):
+                    with olefile.OleFileIO(self.ppt_path) as ole:
+                        # Look for slide-related streams in the OLE file
+                        stream_names = ole.listdir()
+                        slide_count = 0
+
+                        for stream in stream_names:
+                            stream_name = '/'.join(stream) if isinstance(stream, list) else str(stream)
+                            # Count streams that typically contain slide data
+                            if 'slide' in stream_name.lower() or 'Slide' in stream_name:
+                                slide_count += 1
+
+                        if slide_count > 0:
+                            print(f"🔍 OLE file analysis found {slide_count} slide-related streams")
+                            return slide_count
+
+            except (ImportError, Exception) as e:
+                print(f"🔍 OLE file analysis not available: {e}")
+
+            # Method 2: Try using python-pptx with different approaches
+            try:
+                # Sometimes PPT files can be read if we ignore certain errors
+                from pptx import Presentation
+                from pptx.exc import PackageNotFoundError
+
+                # Try opening with different error handling
+                pres = Presentation(self.ppt_path)
+                slide_count = len(pres.slides)
+                if slide_count > 0:
+                    print(f"🔍 Python-pptx successfully read {slide_count} slides")
+                    return slide_count
+
+            except Exception as e:
+                print(f"🔍 Python-pptx analysis failed: {e}")
+
+            # Method 3: File size-based estimation (improved)
+            try:
+                file_size = os.path.getsize(self.ppt_path)
+                # Improved estimation based on typical PPT file sizes
+                # Small presentations: ~50-100KB per slide
+                # Medium presentations: ~30-80KB per slide (compressed)
+                # Large presentations: ~20-60KB per slide (highly compressed)
+
+                if file_size > 200000:  # 200KB+
+                    # Use more aggressive estimation for larger files
+                    # Assume 50KB per slide on average for better detection
+                    estimated_slides = min(max(int(file_size / 50000), 2), 100)  # Cap between 2-100 slides
+                    print(f"🔍 File size estimation suggests ~{estimated_slides} slides (file size: {file_size/1024/1024:.1f}MB)")
+                    return estimated_slides
+                elif file_size > 100000:  # 100KB+
+                    # Smaller files, more conservative
+                    estimated_slides = min(max(int(file_size / 80000), 2), 20)
+                    print(f"🔍 File size estimation suggests ~{estimated_slides} slides (file size: {file_size/1024:.0f}KB)")
+                    return estimated_slides
+
+            except Exception as e:
+                print(f"🔍 File size analysis failed: {e}")
+
+            # Method 4: Look for PowerPoint processes and try to get info via AppleScript
+            if hasattr(self, 'window_detector') and self.window_detector:
+                try:
+                    # Try macOS AppleScript to get slide count even if no window is active
+                    if self.window_detector.system == "Darwin":
+                        macos_info = self.window_detector.get_powerpoint_slide_info_macos()
+                        if macos_info.get('total_slides') and macos_info['total_slides'] > 1:
+                            print(f"🔍 macOS AppleScript detected {macos_info['total_slides']} slides")
+                            return macos_info['total_slides']
+                except Exception as e:
+                    print(f"🔍 AppleScript analysis failed: {e}")
+
+            return 0
+
+        except Exception as e:
+            print(f"🔍 All slide count detection methods failed: {e}")
+            return 0
+
     def load_presentation(self):
         if self.ppt_path is None:
             raise ValueError("No presentation path specified")
@@ -73,14 +158,26 @@ class PresentationTracker:
                     print(f"Loaded .ppt file with window-based tracking: {self.total_slides} slides detected")
                     return
                 else:
-                    # Default values for .ppt files when window detection fails
-                    self.total_slides = 1
-                    print(f"Loaded .ppt file: Window-based tracking enabled (slide count will update when PowerPoint is detected)")
+                    # Try to detect actual slide count before falling back to default
+                    actual_slide_count = self._detect_ppt_slide_count()
+                    if actual_slide_count > 1:
+                        self.total_slides = actual_slide_count
+                        print(f"📊 Detected {self.total_slides} slides in .ppt file using file analysis")
+                    else:
+                        # Default values for .ppt files when all detection fails
+                        self.total_slides = 1
+                        print(f"Loaded .ppt file: Window-based tracking enabled (slide count will update when PowerPoint is detected)")
                     return
             else:
-                # No auto-detect available, provide basic functionality
-                self.total_slides = 1
-                print(f"Loaded .ppt file: Limited functionality (enable auto_detect for full tracking)")
+                # No auto-detect available, try to get slide count from file analysis
+                actual_slide_count = self._detect_ppt_slide_count()
+                if actual_slide_count > 1:
+                    self.total_slides = actual_slide_count
+                    print(f"📊 Detected {self.total_slides} slides in .ppt file using file analysis")
+                else:
+                    # Default fallback when all methods fail
+                    self.total_slides = 1
+                    print(f"Loaded .ppt file: Limited functionality (enable auto_detect for full tracking)")
                 return
 
         # Handle .pptx files normally
@@ -465,7 +562,11 @@ class PresentationTracker:
 
         window = self.window_detector.get_active_powerpoint_window()
         if window:
-            slide_info = self.window_detector.extract_slide_info_from_title(window.title)
+            try:
+                slide_info = self.window_detector.extract_slide_info_from_title(window.title)
+            except Exception as e:
+                print(f"Error extracting slide info from title '{window.title}': {e}")
+                slide_info = {'current_slide': 1, 'total_slides': 0, 'presentation_name': None, 'mode': 'error'}
             return {
                 'window_title': window.title,
                 'app_name': window.app_name,
@@ -514,7 +615,11 @@ class PresentationTracker:
 
         window = self.window_detector.get_active_powerpoint_window()
         if window:
-            slide_info = self.window_detector.extract_slide_info_from_title(window.title)
+            try:
+                slide_info = self.window_detector.extract_slide_info_from_title(window.title)
+            except Exception as e:
+                print(f"Error extracting slide info from title '{window.title}': {e}")
+                slide_info = {'current_slide': 1, 'total_slides': 0, 'presentation_name': None, 'mode': 'error'}
             return {
                 'window_title': window.title,
                 'app_name': window.app_name,
@@ -681,7 +786,11 @@ class PresentationTracker:
 
         window = self.window_detector.get_active_powerpoint_window()
         if window:
-            slide_info = self.window_detector.extract_slide_info_from_title(window.title)
+            try:
+                slide_info = self.window_detector.extract_slide_info_from_title(window.title)
+            except Exception as e:
+                print(f"Error extracting slide info from title '{window.title}': {e}")
+                slide_info = {'current_slide': 1, 'total_slides': 0, 'presentation_name': None, 'mode': 'error'}
             return {
                 'window_title': window.title,
                 'app_name': window.app_name,

@@ -2,7 +2,34 @@ import platform
 import time
 import re
 from typing import Optional, List, Dict, Tuple
-import psutil
+
+# Import psutil with fallback
+try:
+    import psutil
+    PSUTIL_AVAILABLE = True
+except ImportError:
+    print("psutil not available. Windows process detection may be limited.")
+    psutil = None
+    PSUTIL_AVAILABLE = False
+
+# Import the new screen detector
+try:
+    from .screen_detector import PowerPointScreenDetector
+    SCREEN_DETECTOR_AVAILABLE = True
+except ImportError as e:
+    print(f"Screen detector not available: {e}")
+    print("Install OCR dependencies with: pip install -r requirements-ocr.txt")
+    SCREEN_DETECTOR_AVAILABLE = False
+    PowerPointScreenDetector = None
+
+# Import the specialized PPT detector
+try:
+    from .ppt_detector import PPTDetector
+    PPT_DETECTOR_AVAILABLE = True
+except ImportError as e:
+    print(f"PPT detector not available: {e}")
+    PPT_DETECTOR_AVAILABLE = False
+    PPTDetector = None
 
 class WindowInfo:
     def __init__(self, window_id, title: str, app_name: str, position: Tuple[int, int] = None, size: Tuple[int, int] = None):
@@ -26,6 +53,24 @@ class PowerPointWindowDetector:
         ]
         self.current_window = None
         self.last_slide_info = None
+
+        # Initialize screen detector if available
+        self.screen_detector = None
+        if SCREEN_DETECTOR_AVAILABLE:
+            try:
+                self.screen_detector = PowerPointScreenDetector()
+            except Exception as e:
+                print(f"Failed to initialize screen detector: {e}")
+                self.screen_detector = None
+
+        # Initialize PPT detector if available
+        self.ppt_detector = None
+        if PPT_DETECTOR_AVAILABLE:
+            try:
+                self.ppt_detector = PPTDetector()
+            except Exception as e:
+                print(f"Failed to initialize PPT detector: {e}")
+                self.ppt_detector = None
 
     def is_powerpoint_window(self, window_title: str, app_name: str) -> bool:
         powerpoint_indicators = [
@@ -56,9 +101,12 @@ class PowerPointWindowDetector:
 
         # For macOS, if title is empty or doesn't contain slide info, try AppleScript
         if self.system == "Darwin" and (not title or not any(pattern in title for pattern in ['Slide', '/', 'of'])):
-            applescript_info = self.get_powerpoint_slide_info_macos()
-            if applescript_info['current_slide']:
-                return applescript_info
+            try:
+                applescript_info = self.get_powerpoint_slide_info_macos()
+                if applescript_info and applescript_info.get('current_slide'):
+                    return applescript_info
+            except Exception as e:
+                print(f"AppleScript slide info failed: {e}")
 
         # Fall back to title parsing for Windows or when AppleScript fails
         slide_patterns = [
@@ -185,7 +233,7 @@ class PowerPointWindowDetector:
     def get_powerpoint_slide_info_macos(self) -> Dict:
         try:
             import subprocess
-            # Enhanced AppleScript with better slide detection
+            # Enhanced AppleScript with special handling for .ppt files
             applescript = '''
             tell application "Microsoft PowerPoint"
                 try
@@ -197,6 +245,15 @@ class PowerPointWindowDetector:
                         set currentMode to "normal"
                         set slideDetected to false
                         set slideText to ""
+                        set isPptFile to false
+
+                        -- Check if this is a .ppt file (compatibility mode)
+                        try
+                            if presentationName contains ".ppt" and not (presentationName contains ".pptx") then
+                                set isPptFile to true
+                                set currentMode to "compatibility"
+                            end if
+                        end try
 
                         -- Method 1: Try slideshow mode first
                         try
@@ -216,31 +273,60 @@ class PowerPointWindowDetector:
                             end if
                         end try
 
-                        -- Method 2: Try document window view
+                        -- Method 2: Enhanced document window approach for .ppt files
                         if not slideDetected then
                             try
                                 if (count of document windows) > 0 then
                                     set docWin to document window 1
-                                    set viewObj to view of docWin
 
-                                    -- Try multiple approaches to get current slide
-                                    try
-                                        set slideIdx to slide index of viewObj
-                                        if slideIdx > 0 and slideIdx <= totalSlides then
-                                            set currentSlideNum to slideIdx
-                                            set slideDetected to true
-                                        end if
-                                    on error
+                                    -- For .ppt files, try different approaches
+                                    if isPptFile then
+                                        -- .ppt files may have different view object behavior
                                         try
-                                            set slideRef to slide of viewObj
-                                            if slideRef is not missing value then
-                                                set currentSlideNum to slide number of slideRef
-                                                set slideDetected to true
+                                            set viewType to view type of view of docWin
+                                            -- Try to get slide from current view
+                                            if viewType is not missing value then
+                                                set viewObj to view of docWin
+                                                try
+                                                    -- Try getting slide index differently for .ppt
+                                                    set currentSlideRef to slide of viewObj
+                                                    if currentSlideRef is not missing value then
+                                                        set currentSlideNum to slide number of currentSlideRef
+                                                        set slideDetected to true
+                                                    end if
+                                                on error
+                                                    -- Fallback: try slide index property
+                                                    try
+                                                        set slideIdx to slide index of viewObj
+                                                        if slideIdx is not missing value and slideIdx > 0 then
+                                                            set currentSlideNum to slideIdx
+                                                            set slideDetected to true
+                                                        end if
+                                                    end try
+                                                end try
                                             end if
                                         end try
-                                    end try
+                                    else
+                                        -- Standard approach for .pptx files
+                                        set viewObj to view of docWin
+                                        try
+                                            set slideIdx to slide index of viewObj
+                                            if slideIdx > 0 and slideIdx <= totalSlides then
+                                                set currentSlideNum to slideIdx
+                                                set slideDetected to true
+                                            end if
+                                        on error
+                                            try
+                                                set slideRef to slide of viewObj
+                                                if slideRef is not missing value then
+                                                    set currentSlideNum to slide number of slideRef
+                                                    set slideDetected to true
+                                                end if
+                                            end try
+                                        end try
+                                    end if
 
-                                    -- Get slide text in normal mode
+                                    -- Get slide text if we detected a slide
                                     if slideDetected then
                                         try
                                             set currentSlide to slide currentSlideNum of currentPresentation
@@ -255,7 +341,7 @@ class PowerPointWindowDetector:
                             end try
                         end if
 
-                        -- Method 3: Try selection-based detection
+                        -- Method 3: Selection-based detection (works better for .ppt sometimes)
                         if not slideDetected then
                             try
                                 if (count of document windows) > 0 then
@@ -278,21 +364,34 @@ class PowerPointWindowDetector:
                             end try
                         end if
 
+                        -- Method 4: Fallback for .ppt files - use first slide if nothing else works
+                        if not slideDetected and isPptFile then
+                            try
+                                set currentSlideNum to 1
+                                set slideDetected to true
+                                set currentMode to "ppt_fallback"
+                                -- Try to get text from first slide
+                                try
+                                    set currentSlide to slide 1 of currentPresentation
+                                    repeat with shp in shapes of currentSlide
+                                        if has text frame shp then
+                                            set slideText to slideText & text of text frame of shp & " "
+                                        end if
+                                    end repeat
+                                end try
+                            end try
+                        end if
+
                         -- Clean up slide text
-                        set slideText to (characters 1 through (length of slideText) of slideText) as string
+                        if slideText is not "" then
+                            set slideText to (characters 1 through (length of slideText) of slideText) as string
+                        end if
 
-                        -- Determine compatibility mode
-                        try
-                            if presentationName contains ".ppt" and not (presentationName contains ".pptx") then
-                                set currentMode to "compatibility"
-                            end if
-                            if (count of document windows) > 0 and (name of document window 1 contains "Compatibility Mode") then
-                                set currentMode to "compatibility"
-                            end if
-                        end try
-
+                        -- Set final mode
                         if not slideDetected then
                             set currentMode to "limited"
+                        else if isPptFile then
+                            set currentMode to "ppt_compatibility"
                         end if
 
                         return presentationName & "|" & currentSlideNum & "|" & totalSlides & "|" & currentMode & "|" & slideText
@@ -348,14 +447,27 @@ class PowerPointWindowDetector:
                     title = win32gui.GetWindowText(hwnd)
                     _, pid = win32process.GetWindowThreadProcessId(hwnd)
                     try:
-                        app_name = psutil.Process(pid).name()
+                        if PSUTIL_AVAILABLE:
+                            app_name = psutil.Process(pid).name()
+                        else:
+                            app_name = "unknown"
+
                         if self.is_powerpoint_window(title, app_name):
                             rect = win32gui.GetWindowRect(hwnd)
                             pos = (rect[0], rect[1])
                             size = (rect[2] - rect[0], rect[3] - rect[1])
                             windows_list.append(WindowInfo(hwnd, title, app_name, pos, size))
-                    except (psutil.NoSuchProcess, psutil.AccessDenied):
-                        pass
+                    except Exception as e:
+                        if PSUTIL_AVAILABLE:
+                            try:
+                                # Try without psutil if it fails
+                                if self.is_powerpoint_window(title, "PowerPoint"):
+                                    rect = win32gui.GetWindowRect(hwnd)
+                                    pos = (rect[0], rect[1])
+                                    size = (rect[2] - rect[0], rect[3] - rect[1])
+                                    windows_list.append(WindowInfo(hwnd, title, "PowerPoint", pos, size))
+                            except:
+                                pass
                 return True
             win32gui.EnumWindows(enum_window_callback, windows)
         except ImportError:
@@ -397,8 +509,73 @@ class PowerPointWindowDetector:
             print(f"\nMonitoring error: {e}")
 
     def get_current_slide_info(self) -> Optional[Dict]:
+        # On macOS, try PPT detector first if available (it doesn't need window detection)
+        if self.system == "Darwin" and self.ppt_detector:
+            try:
+                ppt_info = self.ppt_detector.detect_current_slide_simple()
+                if ppt_info and ppt_info.get('current_slide') and ppt_info.get('is_ppt'):
+                    print(f"\n=== PPT DETECTION ===")
+                    print(f"📄 Presentation: {ppt_info.get('presentation_name', 'Unknown')}")
+                    print(f"📊 Slide: {ppt_info.get('current_slide')}/{ppt_info.get('total_slides')}")
+                    print(f"🔧 Method: {ppt_info.get('detection_method')}")
+
+                    slide_text = ppt_info.get('slide_text', '')
+                    if slide_text:
+                        if slide_text.startswith('[') and slide_text.endswith(']'):
+                            print(f"⚠️  {slide_text}")
+                        else:
+                            print(f"📝 Content: {slide_text}")
+                    else:
+                        print(f"📝 Content: [No text extracted]")
+                    print("=" * 50)
+
+                    # Convert to standard format
+                    return {
+                        'current_slide': ppt_info.get('current_slide'),
+                        'total_slides': ppt_info.get('total_slides'),
+                        'presentation_name': ppt_info.get('presentation_name'),
+                        'mode': 'ppt_specialized',
+                        'slide_text': ppt_info.get('slide_text', ''),
+                        'detection_method': ppt_info.get('detection_method', 'ppt_specialized')
+                    }
+            except Exception as e:
+                print(f"PPT specialized detection failed: {e}")
+
         window = self.get_active_powerpoint_window()
-        return self.extract_slide_info_from_title(window.title) if window else None
+        if not window:
+            # If no window but we're on macOS, still try regular AppleScript
+            if self.system == "Darwin":
+                return self.extract_slide_info_from_title("")
+            return None
+
+        # First try the existing method (AppleScript on macOS, title parsing on Windows)
+        slide_info = self.extract_slide_info_from_title(window.title)
+
+        # If we couldn't get slide info and screen detector is available, use OCR fallback
+        if (not slide_info.get('current_slide') or not slide_info.get('slide_text', '').strip()) and self.screen_detector:
+            try:
+                screen_info = self.screen_detector.get_current_slide_info()
+                if screen_info and screen_info.slide_number:
+                    # Merge the information
+                    slide_info['current_slide'] = screen_info.slide_number
+                    slide_info['slide_text'] = screen_info.content
+                    slide_info['slide_title'] = screen_info.title
+                    slide_info['detection_method'] = 'screen_ocr'
+                    slide_info['ocr_confidence'] = screen_info.confidence_score
+
+                    print(f"\n=== OCR DETECTION ===")
+                    print(f"Slide {screen_info.slide_number}: {screen_info.title}")
+                    print(f"Confidence: {screen_info.confidence_score:.1f}%")
+                    print(f"Content: {screen_info.content[:100]}...")
+                    print("=" * 30)
+            except Exception as e:
+                print(f"Screen detection fallback failed: {e}")
+
+        return slide_info
+
+    def get_current_slide_info_with_content(self) -> Optional[Dict]:
+        """Get slide info with enhanced content detection using OCR when available"""
+        return self.get_current_slide_info()
 
 if __name__ == "__main__":
     detector = PowerPointWindowDetector()
