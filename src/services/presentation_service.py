@@ -225,7 +225,9 @@ class PresentationService:
             if not self.detector:
                 self.detector = PowerPointWindowDetector()
 
-            # Try to auto-detect presentation
+            print("🔍 Attempting auto-detection...")
+
+            # Method 1: Try to auto-detect with PowerPoint window tracking
             self.tracker = PresentationTracker(None, auto_detect=True)
 
             if self.tracker.auto_load_presentation():
@@ -238,13 +240,42 @@ class PresentationService:
                 for callback in self.presentation_load_callbacks:
                     callback(self.current_presentation_id, self.tracker.total_slides)
 
-                print(f"Auto-detected presentation: {self.current_presentation_id}")
+                print(f"✅ Auto-detected presentation: {self.current_presentation_id}")
                 return True
 
+            print("⚠️ PowerPoint window-based detection failed, trying file-based detection...")
+
+            # Method 2: If PowerPoint detection fails, look for any PPT/PPTX files directly
+            import glob
+            import os
+
+            search_patterns = [
+                "*.pptx", "*.ppt",
+                "*.PPTX", "*.PPT"
+            ]
+
+            found_files = []
+            for pattern in search_patterns:
+                found_files.extend(glob.glob(pattern))
+
+            if found_files:
+                # Try to load the first found file
+                selected_file = found_files[0]
+                print(f"🎯 Found presentation file: {selected_file}")
+
+                if self.load_presentation(selected_file):
+                    print(f"✅ Successfully loaded: {os.path.basename(selected_file)}")
+                    return True
+                else:
+                    print(f"❌ Failed to load: {selected_file}")
+
+            print("❌ No presentation files found for auto-detection")
             return False
 
         except Exception as e:
-            print(f"Failed to auto-detect presentation: {e}")
+            print(f"❌ Failed to auto-detect presentation: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
     def get_presentation_summary(self) -> Dict:

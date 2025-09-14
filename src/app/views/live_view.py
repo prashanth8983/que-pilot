@@ -583,6 +583,34 @@ class LiveView(QWidget):
             if not hasattr(self.pres_service, 'get_current_slide_info'):
                 return
 
+            # If no presentation is loaded, try auto-detection
+            if not self.pres_service.current_presentation_id:
+                print("🔍 No presentation loaded, attempting auto-detection...")
+                if hasattr(self.pres_service, 'auto_detect_presentation'):
+                    if self.pres_service.auto_detect_presentation():
+                        print("✅ Auto-detected presentation during live view!")
+
+                        # Ensure callbacks are connected for the newly detected presentation
+                        if not self.callbacks_connected:
+                            self.pres_service.add_slide_change_callback(self.update_slide_info)
+                            self.callbacks_connected = True
+                            print("📡 Connected slide change callbacks")
+
+                        # Start the presentation service now that we found one
+                        self.pres_service.start_presentation()
+
+                        # Update status via parent window if available
+                        if hasattr(self.parent(), 'update_status'):
+                            self.parent().update_status("Presentation detected and loaded!")
+
+                        # Force an immediate UI update with the new presentation data
+                        summary = self.pres_service.get_presentation_summary()
+                        if summary and summary.get('presentation_id'):
+                            presentation_id = summary.get('presentation_id', '')
+                            display_name = presentation_id.replace('_', ' ').title()
+                            self.presentation_title.setText(display_name)
+                            print(f"📱 Updated UI with presentation: {display_name}")
+
             # Try to sync with PowerPoint first for real-time updates
             if hasattr(self.pres_service, 'sync_with_powerpoint'):
                 self.pres_service.sync_with_powerpoint()
@@ -609,6 +637,11 @@ class LiveView(QWidget):
                     if total_slides > 0:
                         progress_percent = int((current_slide / total_slides) * 100)
                         self.slide_progress.setValue(progress_percent)
+                else:
+                    # No presentation loaded - show waiting message
+                    self.presentation_title.setText("Waiting for PowerPoint...")
+                    self.slide_progress_text.setText("0 / 0")
+                    self.slide_progress.setValue(0)
 
             # Get detailed slide info for speaker cues
             slide_info = self.pres_service.get_current_slide_info()
@@ -618,6 +651,9 @@ class LiveView(QWidget):
 
                 # Update UI with safe data
                 self.update_slide_info_safe(current_slide, total_slides, slide_info)
+            else:
+                # No slide info available - show default message
+                self.speaker_cues.setPlainText("• Open PowerPoint with a presentation\n• The app will automatically detect it\n• Slide information will appear here")
 
         except Exception as e:
             print(f"Error refreshing presentation data: {e}")

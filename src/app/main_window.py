@@ -290,7 +290,7 @@ class MainWindow(QMainWindow):
         btn.setCheckable(True)
         btn.setChecked(is_checked)
         btn.setToolTip(tooltip)
-        btn.clicked.connect(func)
+        btn.clicked.connect(lambda: func())
 
         # Store icon names for dynamic updates
         btn.icon_name = icon_name
@@ -398,50 +398,35 @@ class MainWindow(QMainWindow):
             # Allow navigating to live view if a presentation is already loaded
             should_start = True
         else:
-            # No presentation loaded - offer options to the user
-            reply = QMessageBox.question(
-                self,
-                "No Presentation Loaded",
-                "No presentation is currently loaded. Would you like to:\n\n"
-                "• Click 'Yes' to auto-detect a running PowerPoint presentation\n"
-                "• Click 'No' to go back and load a presentation file first",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.Yes
-            )
+            # Always try auto-detection first when no presentation is loaded
+            self.update_status("Auto-detecting presentation...")
+            print("🔍 Attempting auto-detection of PowerPoint presentation...")
 
-            if reply == QMessageBox.Yes:
-                # Try auto-detection
-                self.update_status("Detecting presentation...")
-                if self.pres_service.auto_detect_presentation():
-                    should_start = True
-                    self.update_status("Presentation detected!")
-                else:
-                    QMessageBox.information(
-                        self,
-                        "Auto-Detection Failed",
-                        "Could not detect a running PowerPoint presentation.\n\n"
-                        "Please ensure:\n"
-                        "• PowerPoint is running\n"
-                        "• A presentation is open\n"
-                        "• The presentation is not minimized\n\n"
-                        "Or go back and load a presentation file manually."
-                    )
-                    return
+            if self.pres_service.auto_detect_presentation():
+                should_start = True
+                print("✅ Auto-detection successful!")
+                self.update_status("Presentation detected!")
             else:
-                # User chose to go back
-                return
+                # Auto-detection failed - but still allow access to Live view
+                print("⚠️  No PowerPoint presentation auto-detected")
+                should_start = True  # Allow Live view to load anyway
+                self.update_status("Live view ready (no presentation detected)")
 
         if should_start:
-            self.pres_service.start_presentation()
-
-            # Start sync service for real-time slide tracking
-            self.sync_service.start_sync(1.5)  # Check every 1.5 seconds
+            # Only start presentation service if we have a presentation
+            if self.pres_service.current_presentation_id:
+                self.pres_service.start_presentation()
+                # Start sync service for real-time slide tracking
+                self.sync_service.start_sync(1.5)  # Check every 1.5 seconds
+                self.update_status("Listening...")
+            else:
+                # No presentation loaded, but Live view is accessible
+                self.update_status("Live view ready - waiting for presentation detection")
 
             self.live_view.setup_view()  # This will start the AI service with proper error handling
             self.stacked_widget.setCurrentWidget(self.live_view)
             self.live_session_btn.setChecked(True)
             self.stop_btn.show()
-            self.update_status("Listening...")
             
     def stop_presentation(self):
         self.ai_service.stop_listening()
