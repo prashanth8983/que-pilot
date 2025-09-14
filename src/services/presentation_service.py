@@ -221,13 +221,43 @@ class PresentationService:
     def auto_detect_presentation(self) -> bool:
         """Automatically detect and load a currently open presentation."""
         try:
+            print("🔍 Attempting auto-detection...")
+
+            # Method 1: Try enhanced detection first
+            try:
+                from .integrated_service_manager import service_manager
+
+                if service_manager.auto_detect_presentation():
+                    status = service_manager.get_status()
+
+                    # Set our presentation info from the enhanced detector
+                    self.current_presentation_id = status.current_presentation or "detected_presentation"
+
+                    # Create a minimal tracker for compatibility
+                    self.tracker = PresentationTracker(None, auto_detect=True)
+                    self.tracker.current_slide_index = status.current_slide - 1  # Convert to 0-based
+                    self.tracker.total_slides = status.total_slides
+
+                    # Initialize detector if not already done
+                    if not self.detector:
+                        self.detector = PowerPointWindowDetector()
+
+                    # Notify callbacks
+                    for callback in self.presentation_load_callbacks:
+                        callback(self.current_presentation_id, status.total_slides)
+
+                    print(f"✅ Enhanced auto-detection successful: {self.current_presentation_id} ({status.current_slide}/{status.total_slides})")
+                    return True
+
+            except Exception as e:
+                print(f"⚠️ Enhanced detection failed: {e}")
+
+            # Method 2: Fall back to original detection method
             # Initialize detector if not already done
             if not self.detector:
                 self.detector = PowerPointWindowDetector()
 
-            print("🔍 Attempting auto-detection...")
-
-            # Method 1: Try to auto-detect with PowerPoint window tracking
+            # Try to auto-detect with PowerPoint window tracking
             self.tracker = PresentationTracker(None, auto_detect=True)
 
             if self.tracker.auto_load_presentation():
@@ -240,7 +270,7 @@ class PresentationService:
                 for callback in self.presentation_load_callbacks:
                     callback(self.current_presentation_id, self.tracker.total_slides)
 
-                print(f"✅ Auto-detected presentation: {self.current_presentation_id}")
+                print(f"✅ Original auto-detection successful: {self.current_presentation_id}")
                 return True
 
             print("⚠️ PowerPoint window-based detection failed, trying file-based detection...")

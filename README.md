@@ -1,4 +1,4 @@
-# AI Presentation Copilot
+# Que-Pilot
 
 *A real-time, offline-first AI assistant with a modern Dracula-themed UI to help you deliver flawless presentations. This desktop application, built with Python and PySide6, automatically detects and syncs with your live presentation, listens as you speak, and provides intelligent assistance—all without an internet connection.*
 
@@ -6,8 +6,8 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/quepilot/ai-presentation-copilot.git
-cd ai-presentation-copilot
+git clone https://github.com/quepilot/que-pilot.git
+cd que-pilot
 
 # Create virtual environment
 python -m venv venv
@@ -32,12 +32,13 @@ python main.py
 * [Tech Stack](#tech-stack)
 * [Setup and Installation](#setup-and-installation)
 * [Usage](#usage)
+* [Authors](#authors)
 * [Contributing](#contributing)
 * [License](#license)
 
 ## Introduction
 
-Giving a presentation can be stressful. The **AI Presentation Copilot** is your personal, private presentation coach that runs entirely locally on your machine.
+Giving a presentation can be stressful. **Que-Pilot** is your personal, private presentation coach that runs entirely locally on your machine.
 
 The application features a polished, modern user interface inspired by the popular Dracula theme. It can **automatically detect an open PowerPoint presentation** on your screen, load its content, and **track your slide changes in real-time**. As you present, it uses a local instance of **OpenAI's Whisper** to transcribe your speech. By understanding your context, it can automatically display helpful notes or generate answers to questions, ensuring you never lose your train of thought.
 
@@ -69,7 +70,7 @@ The user interface is designed from the ground up to be modern, intuitive, and v
 The application window is frameless and organized into a dashboard layout with distinct functional zones.
 ```
 +----------------------------------------------------------------------------------------------------------+
-| O  AI Presentation Copilot                                                          [ _ ] [ # ] [ X ] |
+| O  Que-Pilot                                                          [ _ ] [ # ] [ X ] |
 +----------------------------------------------------------------------------------------------------------+
 |[I]|| [ ADVANCED CONTROLS ]        | [ DASHBOARD ]                                                        |
 |---||------------------------------|----------------------------------------------------------------------|
@@ -180,8 +181,8 @@ que-pilot/
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/quepilot/ai-presentation-copilot.git
-   cd ai-presentation-copilot
+   git clone https://github.com/quepilot/que-pilot.git
+   cd que-pilot
    ```
 
 2. **Create and activate a virtual environment:**
@@ -209,3 +210,11 @@ que-pilot/
    ```bash
    python main.py
    ```
+
+## Authors
+
+**Que-Pilot** is developed by:
+
+- **Prashanth Kumar** - [pk3047@nyu.edu](mailto:pk3047@nyu.edu)
+- **Sai Ahkilesh** - [sv3019@nyu.edu](mailto:sv3019@nyu.edu)
+- **Satya Kamala** - [si2502@nyu.edu](mailto:si2502@nyu.edu)

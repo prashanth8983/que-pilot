@@ -1,0 +1,31 @@
+# CuePilot Configuration File
+# Configuration for LLM integration with presentation content
+
+# LM Studio Configuration
+LM_STUDIO_URL: "http://localhost:1234/v1"
+LM_STUDIO_API_KEY: "lm-studio"
+
+# Available Models
+MODEL_GEMMA34BE: "hugging-quants/llama-3.2-3b-instruct"
+MODEL_LLAMA: "llama-3.2-3b-instruct"
+MODEL_DEFAULT: "hugging-quants/llama-3.2-3b-instruct"
+
+# Audio Configuration
+AUDIO_SAMPLE_RATE: 16000
+AUDIO_CHUNK_SIZE: 1024
+AUDIO_CHANNELS: 1
+AUDIO_BUFFER_SECONDS: 30
+TRANSCRIPTION_INTERVAL: 5.0
+
+# CuePilot Settings
+CUEPILOT_TEMPERATURE: 0.7
+CUEPILOT_MAX_AUDIO_HISTORY: 10
+CUEPILOT_RESPONSE_CONFIDENCE_THRESHOLD: 0.5
+
+# Presentation Detection
+SLIDE_MONITOR_INTERVAL: 2.0
+WINDOW_DETECTION_ENABLED: true
+
+# Logging
+LOG_LEVEL: "INFO"
+LOG_FILE: "cuepilot_integration.log"
